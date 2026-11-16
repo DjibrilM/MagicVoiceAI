@@ -53,6 +53,13 @@ export function VoiceLanguageExplorerDialog({
   const [dynamicVoices, setDynamicVoices] = useState<Voice[]>([])
   const [isLoadingVoices, setIsLoadingVoices] = useState(false)
 
+  // Keep selectedLanguageCode synchronized with the active language whenever it changes or dialog opens
+  useEffect(() => {
+    if (activeLanguage?.code) {
+      setSelectedLanguageCode(activeLanguage.code === 'auto' ? 'all' : activeLanguage.code)
+    }
+  }, [activeLanguage.code, isOpen])
+
   const onVoicesLoadedRef = useRef(onVoicesLoaded)
   useEffect(() => {
     onVoicesLoadedRef.current = onVoicesLoaded
@@ -301,7 +308,11 @@ export function VoiceLanguageExplorerDialog({
               {activeTab === 'explore' && !searchQuery && (
                 <div
                   onClick={() => {
-                    onSelectVoice(combinedVoices[0]?.id || 'voice-en-male-1')
+                    const targetVoice = filteredVoices[0] || combinedVoices[0]
+                    onSelectVoice(targetVoice?.id || 'voice-en-male-1')
+                    if (targetVoice?.languageName) {
+                      onSelectLanguage(targetVoice.languageName)
+                    }
                     onClose()
                   }}
                   className="flex items-center justify-between p-3 rounded-xl border border-[#27272a]/60 bg-[#141417]/40 hover:bg-[#1a1a1e] transition-colors cursor-pointer group"

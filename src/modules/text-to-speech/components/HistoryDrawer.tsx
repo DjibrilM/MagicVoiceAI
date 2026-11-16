@@ -290,11 +290,6 @@ export function HistoryDrawer({
                             <span className="text-zinc-500 text-[10.5px]">Single voice</span>
                           )}
 
-                          {/* Engine Badge */}
-                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-white/[0.04] text-zinc-400 border border-white/[0.04]">
-                            CosyVoice 3
-                          </span>
-
                           {/* Duration */}
                           {item.duration && (
                             <>

@@ -550,6 +550,140 @@ function normalizeCustomVoicePrompt(prompt: string): CosyVoiceInstructOption {
   return trimmed;
 }
 
+interface TargetLanguageInfo {
+  code: string;
+  folder: string;
+  zhName: string;
+  enName: string;
+  isAuto: boolean;
+  isEnglish: boolean;
+}
+
+const TARGET_LANGUAGE_MAP: Record<string, Omit<TargetLanguageInfo, "isAuto" | "isEnglish">> = {
+  en: { code: "en", folder: "en", zhName: "英语", enName: "English (US)" },
+  "en-us": { code: "en", folder: "en", zhName: "英语", enName: "English (US)" },
+  english: { code: "en", folder: "en", zhName: "英语", enName: "English (US)" },
+  "english (us)": { code: "en", folder: "en", zhName: "英语", enName: "English (US)" },
+  "english (united states)": { code: "en", folder: "en", zhName: "英语", enName: "English (US)" },
+  "en-gb": { code: "en-gb", folder: "en-gb", zhName: "英式英语", enName: "English (UK)" },
+  "english (uk)": { code: "en-gb", folder: "en-gb", zhName: "英式英语", enName: "English (UK)" },
+  "english (united kingdom)": { code: "en-gb", folder: "en-gb", zhName: "英式英语", enName: "English (UK)" },
+  "en-au": { code: "en-au", folder: "en-au", zhName: "澳大利亚英语", enName: "English (Australia)" },
+  "english (australia)": { code: "en-au", folder: "en-au", zhName: "澳大利亚英语", enName: "English (Australia)" },
+  "en-af": { code: "en-af", folder: "en-af", zhName: "英语", enName: "English (Africa)" },
+  "english (africa)": { code: "en-af", folder: "en-af", zhName: "英语", enName: "English (Africa)" },
+  fr: { code: "fr", folder: "fr", zhName: "法语", enName: "French" },
+  french: { code: "fr", folder: "fr", zhName: "法语", enName: "French" },
+  français: { code: "fr", folder: "fr", zhName: "法语", enName: "French" },
+  francais: { code: "fr", folder: "fr", zhName: "法语", enName: "French" },
+  es: { code: "es", folder: "es", zhName: "西班牙语", enName: "Spanish" },
+  spanish: { code: "es", folder: "es", zhName: "西班牙语", enName: "Spanish" },
+  español: { code: "es", folder: "es", zhName: "西班牙语", enName: "Spanish" },
+  espanol: { code: "es", folder: "es", zhName: "西班牙语", enName: "Spanish" },
+  de: { code: "de", folder: "de", zhName: "德语", enName: "German" },
+  german: { code: "de", folder: "de", zhName: "德语", enName: "German" },
+  deutsch: { code: "de", folder: "de", zhName: "德语", enName: "German" },
+  it: { code: "it", folder: "it", zhName: "意大利语", enName: "Italian" },
+  italian: { code: "it", folder: "it", zhName: "意大利语", enName: "Italian" },
+  italiano: { code: "it", folder: "it", zhName: "意大利语", enName: "Italian" },
+  pt: { code: "pt", folder: "pt", zhName: "葡萄牙语", enName: "Portuguese" },
+  portuguese: { code: "pt", folder: "pt", zhName: "葡萄牙语", enName: "Portuguese" },
+  português: { code: "pt", folder: "pt", zhName: "葡萄牙语", enName: "Portuguese" },
+  portugues: { code: "pt", folder: "pt", zhName: "葡萄牙语", enName: "Portuguese" },
+  ja: { code: "ja", folder: "ja", zhName: "日语", enName: "Japanese" },
+  japanese: { code: "ja", folder: "ja", zhName: "日语", enName: "Japanese" },
+  日本語: { code: "ja", folder: "ja", zhName: "日语", enName: "Japanese" },
+  zh: { code: "zh", folder: "zh", zhName: "中文", enName: "Chinese" },
+  chinese: { code: "zh", folder: "zh", zhName: "中文", enName: "Chinese" },
+  "中文 (mandarin)": { code: "zh", folder: "zh", zhName: "中文", enName: "Chinese" },
+  中文: { code: "zh", folder: "zh", zhName: "中文", enName: "Chinese" },
+  ko: { code: "ko", folder: "ko", zhName: "韩语", enName: "Korean" },
+  korean: { code: "ko", folder: "ko", zhName: "韩语", enName: "Korean" },
+  한국어: { code: "ko", folder: "ko", zhName: "韩语", enName: "Korean" },
+  hi: { code: "hi", folder: "hi", zhName: "印地语", enName: "Hindi" },
+  hindi: { code: "hi", folder: "hi", zhName: "印地语", enName: "Hindi" },
+  हिन्दी: { code: "hi", folder: "hi", zhName: "印地语", enName: "Hindi" },
+  ar: { code: "ar", folder: "ar", zhName: "阿拉伯语", enName: "Arabic" },
+  arabic: { code: "ar", folder: "ar", zhName: "阿拉伯语", enName: "Arabic" },
+  العربية: { code: "ar", folder: "ar", zhName: "阿拉伯语", enName: "Arabic" },
+  ru: { code: "ru", folder: "ru", zhName: "俄语", enName: "Russian" },
+  russian: { code: "ru", folder: "ru", zhName: "俄语", enName: "Russian" },
+  русский: { code: "ru", folder: "ru", zhName: "俄语", enName: "Russian" },
+  sw: { code: "sw", folder: "sw", zhName: "斯瓦希里语", enName: "Swahili" },
+  swahili: { code: "sw", folder: "sw", zhName: "斯瓦希里语", enName: "Swahili" },
+  kiswahili: { code: "sw", folder: "sw", zhName: "斯瓦希里语", enName: "Swahili" },
+};
+
+function normalizeTargetLanguage(language?: string): TargetLanguageInfo {
+  const raw = (language || "").trim().toLowerCase();
+  if (!raw || raw === "auto" || raw === "auto detect" || raw === "all") {
+    return {
+      code: "en",
+      folder: "en",
+      zhName: "英语",
+      enName: "Auto Detect",
+      isAuto: true,
+      isEnglish: true,
+    };
+  }
+  const matched = TARGET_LANGUAGE_MAP[raw];
+  if (matched) {
+    return {
+      ...matched,
+      isAuto: false,
+      isEnglish: matched.folder.startsWith("en"),
+    };
+  }
+  return {
+    code: raw,
+    folder: raw,
+    zhName: "",
+    enName: language || raw,
+    isAuto: false,
+    isEnglish: raw.startsWith("en"),
+  };
+}
+
+/**
+ * Normalizes conversational shorthand for the target language (e.g. French SMS/chat
+ * shorthand like "Bonjour cv" -> "Bonjour, ça va ?") so the TTS tokenizer pronounces
+ * natural words instead of spelling out English letters.
+ */
+function preprocessLanguageShorthand(text: string, langInfo: TargetLanguageInfo): string {
+  if (langInfo.code === "fr") {
+    return text
+      .replace(/\bcv\b(\s*[?!.])?/gi, (_m, punct) => `ça va${punct || " ?"}`)
+      .replace(/\bbjr\b/gi, "bonjour")
+      .replace(/\bslt\b/gi, "salut")
+      .replace(/\bstp\b/gi, "s'il te plaît")
+      .replace(/\bsvp\b/gi, "s'il vous plaît")
+      .replace(/\btkt\b/gi, "ne t'inquiète pas");
+  }
+  return text;
+}
+
+/**
+ * Injects the target language into a Chinese CosyVoice 3 instruct string when a
+ * non-English target language is active, so instruct-mode synthesis (`promptSpeechTokens = 0`)
+ * explicitly steers the LLM to pronounce text in the target language.
+ */
+function applyLanguageToInstruct(
+  instruct: CosyVoiceInstructOption | undefined,
+  langInfo: TargetLanguageInfo
+): CosyVoiceInstructOption | undefined {
+  if (!instruct || langInfo.isAuto || langInfo.isEnglish || !langInfo.zhName) {
+    return instruct;
+  }
+  if (typeof instruct === "string") {
+    if (instruct.includes(langInfo.zhName)) return instruct;
+    if (instruct.startsWith("请用")) {
+      return `请用流利自然的${langInfo.zhName}，${instruct.slice(2)}`;
+    }
+    return `请用${langInfo.zhName}，${instruct}`;
+  }
+  return instruct;
+}
+
 interface ResolvedCosyVoiceConditioning {
   loadInstruct?: CosyVoiceInstructOption;
   perCallEmotion?: "anger" | "happy" | "sad";
@@ -574,6 +708,8 @@ function resolveCosyVoiceConditioning(params: {
   pace?: string;
   dialect?: string;
   customPrompt?: string;
+  langInfo?: TargetLanguageInfo;
+  hasNativeLanguageTranscript?: boolean;
 }): ResolvedCosyVoiceConditioning {
   const segTone = params.segTone || "normal";
   const cues = params.detectedCues || [];
@@ -582,14 +718,9 @@ function resolveCosyVoiceConditioning(params: {
   const rawPace = (params.pace || "").trim().toLowerCase();
   const rawDialect = (params.dialect || "").trim().toLowerCase();
   const customPrompt = (params.customPrompt || "").trim();
+  const langInfo = params.langInfo || normalizeTargetLanguage();
 
   // 1. Pointed segment-level acoustic volume overrides (whisper / loud)
-  // Note: Inline paralinguistic cues ([laugh], [laughter], [chuckle], [smile], [sigh],
-  // [breath], [gasp], [cough], [raise]) are realized directly via CosyVoice 3's trained
-  // paralinguistic token embeddings (IDs 151647..151662) in true zero-shot mode
-  // (`promptSpeechTokens > 0` with `promptText`). Setting `loadInstruct` for those cues
-  // would switch `qvac-tts.cpp` to `build_lm_prompt_instruct` (`promptSpeechTokens = 0`),
-  // suppressing the acoustic paralinguistic tokens.
   if (segTone === "whisper" || cues.includes("whisper")) {
     return {
       loadInstruct: { volume: "soft" },
@@ -603,9 +734,26 @@ function resolveCosyVoiceConditioning(params: {
     };
   }
 
+  // CRITICAL (`qvac-tts.cpp` / `Engine::Impl::run` at 0x1c2cdc..0x1c2ea0):
+  // In `qvac-tts.cpp`, passing ANY `instruct` (`loadInstruct`), `emotion`, or `pace` forces
+  // `build_lm_prompt_instruct` and sets `prompt_speech_tokens = []` (0 tokens) in the Qwen2.5 LLM,
+  // which causes the LLM to revert to its baked default female voice (~233 Hz F0) instead of
+  // the user's selected male/female/custom reference speaker!
+  // Keeping `loadInstruct: undefined` when a reference voice is active guarantees `qvac-tts.cpp`
+  // runs `build_lm_prompt_zero_shot` with `prompt_speech_tokens = prompt.speech_tokens` (> 0),
+  // preserving the exact selected speaker's voice, gender, pitch, and paralinguistic tokens.
+  if (params.hasNativeLanguageTranscript) {
+    return {
+      conditioningLabel: "zero-shot-speaker-locked",
+    };
+  }
+
   // 2. Explicit user-written Voice Prompt (Instruction)
   if (customPrompt.length > 0) {
-    const normalizedPrompt = normalizeCustomVoicePrompt(customPrompt);
+    const normalizedPrompt = applyLanguageToInstruct(
+      normalizeCustomVoicePrompt(customPrompt),
+      langInfo
+    );
     return {
       loadInstruct: normalizedPrompt,
       conditioningLabel: `instruct:custom(${customPrompt.slice(0, 32)})`,
@@ -622,7 +770,10 @@ function resolveCosyVoiceConditioning(params: {
 
   // 4. Explicit Speaking Tone selection (when not 'natural' or 'conversational')
   if (rawTone && rawTone !== "natural" && rawTone !== "conversational") {
-    const mappedToneInstruct = COSYVOICE_TONE_INSTRUCT_MAP[rawTone];
+    const mappedToneInstruct = applyLanguageToInstruct(
+      COSYVOICE_TONE_INSTRUCT_MAP[rawTone],
+      langInfo
+    );
     if (mappedToneInstruct) {
       return {
         loadInstruct: mappedToneInstruct,
@@ -641,7 +792,10 @@ function resolveCosyVoiceConditioning(params: {
         conditioningLabel: `emotion:${rawEmotion}`,
       };
     }
-    const mappedEmotionInstruct = COSYVOICE_TONE_INSTRUCT_MAP[rawEmotion];
+    const mappedEmotionInstruct = applyLanguageToInstruct(
+      COSYVOICE_TONE_INSTRUCT_MAP[rawEmotion],
+      langInfo
+    );
     if (mappedEmotionInstruct) {
       return {
         loadInstruct: mappedEmotionInstruct,
@@ -894,9 +1048,10 @@ function ensureNaturalSentencePunctuation(chunkText: string): string {
   }
 
   let result = `${punctuatedBody} ${trailingTokens}`.replace(/([\uE000-\uE00F])/g, " $1 ").replace(/\s+/g, " ").trim();
-  // Always prefix with a single space if the chunk contains paralinguistic tokens so
-  // `QwenTokenizer::pretokenize` binds the leading space (`Ġ`) to any initial token.
-  if (/[\uE000-\uE00F]/.test(result)) {
+  // Always prefix with a single space so `QwenTokenizer::encode(chunkText)` in `Engine::Impl::run`
+  // separates `chunkText` from `promptText` with a proper word-boundary space (`Ġ`) and binds
+  // `Ġ` to any initial paralinguistic token.
+  if (result) {
     result = ` ${result}`;
   }
   return result;
@@ -1214,6 +1369,66 @@ const REFERENCE_AUDIO_TRANSCRIPTS: Record<string, string> = {
   "voice_en-af_female_4": "Stories are bridges built from imagination to understanding.",
   "voice_en-af_female_5": "In the wild realms, imagination finds its boundless wings.",
 
+  // Built-in French (fr)
+  voice_fr_male_1: "Notre méfiance coûte très cher.",
+  voice_fr_male_2: "Sois ici maintenant, sois ailleurs plus tard. Est-ce si compliqué ?",
+  voice_fr_male_3: "Il y a du pouvoir à avoir l'air idiot et à ne pas s'en soucier.",
+  voice_fr_male_4: "Notre méfiance coûte très cher.",
+  voice_fr_male_5: "Fais-toi simplement confiance, alors tu sauras comment vivre.",
+  voice_fr_female_1: "Il est fatal de se lancer dans une guerre sans la volonté de la gagner.",
+  voice_fr_female_2: "Il n'y a pas d'échec tant que l'on essaie.",
+  voice_fr_female_3: "Si on a de la chance, une simple fantaisie peut transformer un million de réalités.",
+  voice_fr_female_4: "Les hommes sont troublés non par les choses, mais par la manière dont ils les voient.",
+  voice_fr_female_5: "L'amour guérit les gens, ceux qui le donnent et ceux qui le reçoivent.",
+
+  // Built-in Spanish (es)
+  voice_es_male_1: "La habitación más grande del mundo es la del mejoramiento.",
+  voice_es_male_2: "El ojo ve solo lo que la mente está preparada para comprender.",
+  voice_es_male_3: "Las arrugas deberían indicar simplemente dónde han estado las sonrisas.",
+  voice_es_male_4: "Para atraer algo a tu vida, imagina que ya está ahí.",
+  voice_es_male_5: "Es fatal entrar en cualquier guerra sin la voluntad de ganarla.",
+  voice_es_female_1: "No hay mayor daño que el del tiempo desperdiciado.",
+  voice_es_female_2: "Si sonríes cuando no hay nadie cerca, realmente lo sientes.",
+  voice_es_female_3: "Hola, soy tu voz de inteligencia artificial, lista para dar vida a tus proyectos y narraciones.",
+  voice_es_female_4: "Hola, soy tu voz de inteligencia artificial, lista para dar vida a tus proyectos y narraciones.",
+  voice_es_female_5: "Hola, soy tu voz de inteligencia artificial, lista para dar vida a tus proyectos y narraciones.",
+
+  // Built-in German (de)
+  voice_de_male_1: "Man kann der Schwerkraft nicht die Schuld geben, sich zu verlieben.",
+  voice_de_male_2: "Es gibt keinen größeren Schaden als den der vergeudeten Zeit.",
+  voice_de_male_3: "Wir müssen den Schmerz annehmen und ihn als Treibstoff für unsere Reise verbrennen.",
+  voice_de_male_4: "Das Glück wohnt nicht im Besitz und nicht im Gold, das Glück wohnt in der Seele.",
+  voice_de_male_5: "Vertraue einfach dir selbst, dann wirst du wissen, wie man lebt.",
+  voice_de_female_1: "Ein Mann, der sich selbst nicht vertraut, kann niemandem wirklich vertrauen.",
+  voice_de_female_2: "Um etwas in dein Leben zu bringen, stelle dir vor, es ist bereits da.",
+  voice_de_female_3: "Zu existieren heißt zu verändern, zu verändern heißt zu reifen, zu reifen heißt, sich endlos selbst zu erschaffen.",
+  voice_de_female_4: "Der Anfang ist immer heute.",
+  voice_de_female_5: "Hallo, ich bin deine deutsche KI-Stimme und freue mich darauf, deine Texte zum Leben zu erwecken.",
+
+  // Built-in Italian (it)
+  voice_it_male_1: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  voice_it_male_2: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  voice_it_male_3: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  voice_it_male_4: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  voice_it_male_5: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  voice_it_female_1: "Il coraggio non è assenza di paura, ma semplicemente andare avanti con dignità, nonostante la paura.",
+  voice_it_female_2: "Il coraggio non è assenza di paura, ma semplicemente andare avanti con dignità, nonostante la paura.",
+  voice_it_female_3: "Per far entrare qualcosa nella tua vita, immagina che ci sia già.",
+  voice_it_female_4: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  voice_it_female_5: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+
+  // Built-in Portuguese (pt)
+  voice_pt_male_1: "É fatal entrar em qualquer guerra sem a vontade de vencê-la.",
+  voice_pt_male_2: "Os home runs de ontem não ganham os jogos de hoje.",
+  voice_pt_male_3: "Devemos abraçar a dor e usá-la como combustível para a nossa jornada.",
+  voice_pt_male_4: "As ideias são os pontos de partida de todas as fortunas.",
+  voice_pt_male_5: "Você deve aceitar a mudança como regra, mas não como seu governante.",
+  voice_pt_female_1: "Olá, sou a sua voz em português, pronta para narrar os seus conteúdos com naturalidade.",
+  voice_pt_female_2: "Olá, sou a sua voz em português, pronta para narrar os seus conteúdos com naturalidade.",
+  voice_pt_female_3: "Olá, sou a sua voz em português, pronta para narrar os seus conteúdos com naturalidade.",
+  voice_pt_female_4: "Olá, sou a sua voz em português, pronta para narrar os seus conteúdos com naturalidade.",
+  voice_pt_female_5: "Olá, sou a sua voz em português, pronta para narrar os seus conteúdos com naturalidade.",
+
   // Custom & Cloned Voices (including Ashley)
   voice_preview_ashley:
     "Okay, here's your reminder to stop waiting for the perfect moment. Start small, have fun, and see where it takes you.",
@@ -1265,7 +1480,30 @@ const REFERENCE_WAV_SIZE_TRANSCRIPTS: Record<number, string> = {
     "Every mirror in the house had broken during the night, except for the one in the hallway, and in it, something kept moving. But what was it?",
 };
 
-function resolveReferencePromptText(userProvidedSrc?: string, refWavPath?: string): string | undefined {
+const DEFAULT_LANGUAGE_PROMPT_TEXT: Record<string, string> = {
+  en: "It is not so important to know everything as to appreciate what we learn.",
+  "en-gb": "It is not so important to know everything as to appreciate what we learn.",
+  "en-au": "Every sunrise brings a new chance to make memories.",
+  "en-af": "Success is the sum of small efforts, repeated day in and day out.",
+  fr: "Notre méfiance coûte très cher.",
+  es: "La habitación más grande del mundo es la del mejoramiento.",
+  de: "Vertraue einfach dir selbst, dann wirst du wissen, wie man lebt.",
+  it: "Ciao, sono la tua voce italiana, pronta a dare vita ai tuoi testi con naturalezza e passione.",
+  pt: "Olá, sou a sua voz em português, pronta para narrar os seus conteúdos com naturalidade.",
+  ja: "こんにちは、あなたのテキストを自然な声で読み上げます。",
+  zh: "你好，很高兴为你提供自然流畅的语音合成服务。",
+  ko: "안녕하세요, 자연스럽고 생생한 목소리로 텍스트를 읽어드립니다.",
+  hi: "नमस्ते, मैं आपकी सामग्री को प्राकृतिक आवाज़ में प्रस्तुत करने के लिए तैयार हूँ।",
+  ar: "مرحباً، أنا صوتك الذكي الجاهز لتحويل نصوصك إلى كلام طبيعي.",
+  ru: "Привет, я ваш голосовой помощник, готовый озвучить любой текст.",
+  sw: "Habari, mimi ni sauti yako tayari kusoma maandishi yako kwa ufasaha.",
+};
+
+function resolveReferencePromptText(
+  userProvidedSrc?: string,
+  refWavPath?: string,
+  langInfo?: TargetLanguageInfo
+): string | undefined {
   const candidates = [userProvidedSrc, refWavPath].filter((x): x is string => Boolean(x));
 
   for (const candidate of candidates) {
@@ -1289,9 +1527,18 @@ function resolveReferencePromptText(userProvidedSrc?: string, refWavPath?: strin
         return transcript;
       }
     }
+
+    // 3. Match by language prefix in preset sample filename (e.g. voice_ja_male_1, voice_ar_male_2)
+    const sampleMatch = base.match(/^voice_([a-z-]+)_(?:male|female)_\d+/i);
+    if (sampleMatch) {
+      const sampleLang = sampleMatch[1].toLowerCase();
+      if (DEFAULT_LANGUAGE_PROMPT_TEXT[sampleLang]) {
+        return DEFAULT_LANGUAGE_PROMPT_TEXT[sampleLang];
+      }
+    }
   }
 
-  // 3. Match by WAV byte size for cloned custom voices
+  // 4. Match by WAV byte size for cloned custom voices
   if (refWavPath) {
     try {
       const size = fs.statSync(refWavPath).size;
@@ -1301,7 +1548,43 @@ function resolveReferencePromptText(userProvidedSrc?: string, refWavPath?: strin
     } catch {}
   }
 
+  // 5. Fallback: always return a non-empty transcript when a reference WAV exists so
+  // `qvac-tts.cpp` never drops `prompt_speech_tokens` into cross-lingual 0-token female fallback.
+  if (refWavPath) {
+    const folder = langInfo?.folder || "en";
+    return DEFAULT_LANGUAGE_PROMPT_TEXT[folder] || DEFAULT_LANGUAGE_PROMPT_TEXT.en;
+  }
+
   return undefined;
+}
+
+/**
+ * Resolves the reference audio path for a round while strictly preserving any explicit
+ * voice selected by the user. Only falls back to the target language's default voice
+ * when no valid reference audio was provided or when the round is using the generic
+ * unresolved placeholder ('voice-custom').
+ */
+function resolveLanguageMatchedReferenceAudio(
+  rawRefAudio: string | undefined,
+  roundVoiceId: string | undefined,
+  langInfo: TargetLanguageInfo
+): string {
+  const folder = langInfo.folder || "en";
+  const defaultForLang = `/voices/samples/${folder}/voice_${folder}_male_1.mp3`;
+
+  if (!rawRefAudio || roundVoiceId === "voice-custom") {
+    if (roundVoiceId && roundVoiceId !== "voice-custom") {
+      const idMatch = roundVoiceId.match(/^voice-([a-z-]+)-(male|female)-(\d+)$/i);
+      if (idMatch) {
+        const [, vLang, vGender, vIdx] = idMatch;
+        const targetFolder = vLang.toLowerCase();
+        return `/voices/samples/${targetFolder}/voice_${targetFolder}_${vGender.toLowerCase()}_${vIdx}.mp3`;
+      }
+    }
+    return defaultForLang;
+  }
+
+  return rawRefAudio;
 }
 
 /**
@@ -1542,11 +1825,14 @@ export class VoiceEngineService {
         : `obj:${JSON.stringify(instruct)}`
       : "zero-shot";
 
+    const langInfo = normalizeTargetLanguage(opts.language);
     let refWavPath = getValidReferenceWav(opts.referenceAudioSrc);
     if (!refWavPath) {
-      // High quality default reference voice ensures CAM++ speaker encoder and S3Tok conditioning
-      // are activated, avoiding muffled, noisy zero-shot unconditioned audio.
+      // High quality default reference voice in the target language ensures CAM++ speaker encoder
+      // and S3Tok conditioning are activated in the requested language.
       const defaultCandidates = [
+        `/voices/samples/${langInfo.folder}/voice_${langInfo.folder}_male_1.mp3`,
+        `/voices/samples/${langInfo.folder}/voice_${langInfo.folder}_female_1.mp3`,
         "/voices/samples/en/voice_en_male_1.mp3",
         "/voices/samples/en/voice_en_female_1.mp3",
       ];
@@ -1563,17 +1849,18 @@ export class VoiceEngineService {
 
     const promptText =
       refWavPath && hasCloningModels
-        ? resolveReferencePromptText(opts.referenceAudioSrc, refWavPath)
+        ? resolveReferencePromptText(opts.referenceAudioSrc, refWavPath, langInfo)
         : undefined;
 
     const paralinguisticModelSrc = ensureParalinguisticCompanionModelPath() || cosyvoiceDescriptor;
 
     console.log(
-      `[Echo Voice Engine] CosyVoice 3 setup: refWavPath=${refWavPath}, hasCloningModels=${hasCloningModels}, hasPromptText=${Boolean(promptText)}, mode=${instructKey}, device=${this.inferenceDevice}`,
+      `[Echo Voice Engine] CosyVoice 3 setup: lang=${langInfo.code}(${langInfo.enName}), refWavPath=${refWavPath}, hasCloningModels=${hasCloningModels}, hasPromptText=${Boolean(promptText)}, mode=${instructKey}, device=${this.inferenceDevice}`,
     );
 
     const key = [
       "cosyvoice3",
+      langInfo.code,
       refWavPath || "native",
       promptText ? "zero-shot-transcript" : "cross-lingual",
       instructKey,
@@ -1699,6 +1986,7 @@ export class VoiceEngineService {
       const allSamples: number[] = [];
       let sampleRate = lavaSrEnabled ? 48000 : 24000;
       const engine = activeEngine;
+      const langInfo = normalizeTargetLanguage(options.language);
 
       for (let i = 0; i < activeRounds.length; i++) {
         if (isCancelled?.()) {
@@ -1712,15 +2000,20 @@ export class VoiceEngineService {
         }
 
         const round = activeRounds[i];
-        let roundRefAudio = round.referenceAudioSrc || options.referenceAudioSrc;
-        if (!roundRefAudio) {
-          roundRefAudio = "/voices/samples/en/voice_en_male_1.mp3";
-        }
+        const roundRefAudio = resolveLanguageMatchedReferenceAudio(
+          round.referenceAudioSrc || options.referenceAudioSrc,
+          round.voiceId,
+          langInfo
+        );
+        const roundRefWav = getValidReferenceWav(roundRefAudio);
+        const hasNativeLanguageTranscript = Boolean(
+          resolveReferencePromptText(roundRefAudio, roundRefWav, langInfo)
+        );
 
         onProgress?.({
           taskId,
           progress: 40 + Math.round((i / activeRounds.length) * 50),
-          message: `Synthesizing turn ${i + 1}/${activeRounds.length}${round.speakerName ? ` (${round.speakerName})` : ''}...`,
+          message: `Synthesizing turn ${i + 1}/${activeRounds.length}${round.speakerName ? ` (${round.speakerName})` : ''} [${langInfo.enName}]...`,
           phase: "synthesis",
         });
 
@@ -1734,7 +2027,8 @@ export class VoiceEngineService {
         }
 
         // Parse explicit [pause X.Xs] cues and pointed volume blocks ([whisper], [yell])
-        const segments = parseTextAndPauses(round.text);
+        const normalizedRoundText = preprocessLanguageShorthand(round.text, langInfo);
+        const segments = parseTextAndPauses(normalizedRoundText);
         let speechSegCount = 0;
 
         for (let sIdx = 0; sIdx < segments.length; sIdx++) {
@@ -1770,11 +2064,13 @@ export class VoiceEngineService {
               dialect: round.dialect,
               customPrompt:
                 round.prompt !== undefined ? round.prompt : globalVoicePrompt,
+              langInfo,
+              hasNativeLanguageTranscript,
             });
 
             const { modelId: segmentModelId } = await this.ensureModelLoaded({
               engine: activeEngine,
-              language: options.language || "en",
+              language: langInfo.code,
               lavaSrEnabled,
               instruct: segmentConditioning.loadInstruct,
               referenceAudioSrc: roundRefAudio,
