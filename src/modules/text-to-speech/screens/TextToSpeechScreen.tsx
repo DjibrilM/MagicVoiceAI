@@ -10,7 +10,14 @@ import { useAudioEffect } from '@/hooks/useAudioEffect'
 import { cn } from '@/lib/utils'
 
 import { Voice, SpeechRound, Generation, HistoryEntry, LANGUAGES, getVoicesForLanguage } from '../types'
-import { scanVoiceSamples, loadVoicesForLanguage, deleteCustomVoice } from '@/lib/services/voiceLoader'
+import {
+  scanVoiceSamples,
+  loadVoicesForLanguage,
+  deleteCustomVoice,
+  useDynamicLanguages,
+  getCachedVoices,
+  resolveLanguageFolder,
+} from '@/lib/services/voiceLoader'
 import {
   autoTagSpeechRounds,
   formatTime,
@@ -93,11 +100,44 @@ export function TextToSpeechScreen() {
     scanVoiceSamples()
     loadVoicesForLanguage(state.language).then((loaded) => {
       const custom = state.customVoices || []
-      const customIds = new Set(custom.map((v) => v.id))
-      const combined = [...custom, ...loaded.filter((v) => !customIds.has(v.id))]
+      const map = new Map<string, Voice>()
+      custom.forEach((v) => map.set(v.id, v))
+      state.voices.forEach((v) => map.set(v.id, v))
+      loaded.forEach((v) => map.set(v.id, v))
+      const combined = Array.from(map.values())
       if (combined.length > 0) {
+        const langVoices = loaded.length > 0 ? loaded : combined.filter((v) => v.category !== 'cloned')
+        const defaultVoiceId = langVoices[0]?.id || state.selectedVoiceId
+        const isTargetedLang = state.language && state.language !== 'Auto Detect' && state.language !== 'auto'
+        const targetFolder = resolveLanguageFolder(state.language)
+
+        const updatedRounds = isTargetedLang && langVoices.length > 0
+          ? state.rounds.map((r) => {
+              if (r.voiceId.startsWith('cloned-') || custom.some((c) => c.id === r.voiceId)) {
+                return r
+              }
+              const presetMatch = r.voiceId.match(/^voice-([a-z-]+)-(male|female)-(\d+)$/i)
+              if (presetMatch) {
+                const [, vFolder, vGender, vIdx] = presetMatch
+                if (vFolder.toLowerCase() !== targetFolder.toLowerCase()) {
+                  const remappedId = `voice-${targetFolder}-${vGender.toLowerCase()}-${vIdx}`
+                  const remapped =
+                    langVoices.find((v) => v.id === remappedId) ||
+                    langVoices.find((v) => v.gender?.toLowerCase() === vGender.toLowerCase()) ||
+                    langVoices[0]
+                  if (remapped) return { ...r, voiceId: remapped.id }
+                }
+              } else if (!map.has(r.voiceId) && defaultVoiceId) {
+                return { ...r, voiceId: defaultVoiceId }
+              }
+              return r
+            })
+          : state.rounds
+
         updateState({
           voices: combined,
+          rounds: updatedRounds,
+          selectedVoiceId: updatedRounds[state.focusedRoundIndex]?.voiceId || updatedRounds[0]?.voiceId || defaultVoiceId,
         })
       }
     })
@@ -203,13 +243,77 @@ export function TextToSpeechScreen() {
   const handleVoicesLoaded = useCallback(
     (loadedVoices: Voice[]) => {
       const custom = state.customVoices || []
-      const customIds = new Set(custom.map((v) => v.id))
-      const combined = [...custom, ...loadedVoices.filter((v) => !customIds.has(v.id))]
+      const map = new Map<string, Voice>()
+      custom.forEach((v) => map.set(v.id, v))
+      state.voices.forEach((v) => map.set(v.id, v))
+      loadedVoices.forEach((v) => map.set(v.id, v))
       updateState({
-        voices: combined,
+        voices: Array.from(map.values()),
       })
     },
-    [state.customVoices, updateState]
+    [state.customVoices, state.voices, updateState]
+  )
+
+  const handleSelectLanguage = useCallback(
+    (lang: string) => {
+      loadVoicesForLanguage(lang).then((langVoices) => {
+        const voicesToUse = langVoices.length > 0 ? langVoices : getVoicesForLanguage(lang)
+        const custom = state.customVoices || []
+        const map = new Map<string, Voice>()
+        custom.forEach((v) => map.set(v.id, v))
+        state.voices.forEach((v) => map.set(v.id, v))
+        voicesToUse.forEach((v) => map.set(v.id, v))
+        const combinedVoices = Array.from(map.values())
+
+        const newVoiceId = voicesToUse[0]?.id
+        const safeFocusIdx =
+          state.focusedRoundIndex >= 0 && state.focusedRoundIndex < state.rounds.length
+            ? state.focusedRoundIndex
+            : 0
+
+        if (newVoiceId && lang !== 'Auto Detect' && lang !== 'auto') {
+          const targetFolder = resolveLanguageFolder(lang)
+          const updatedRounds = state.rounds.map((r) => {
+            const isCustom = r.voiceId.startsWith('cloned-') || custom.some((c) => c.id === r.voiceId)
+            // Never overwrite custom cloned voices when switching language
+            if (isCustom) {
+              return r
+            }
+            // If the round already has a voice belonging to the target language, keep the exact voice the user selected
+            const existingInTarget = voicesToUse.find((v) => v.id === r.voiceId)
+            if (existingInTarget) {
+              return r
+            }
+            const presetMatch = r.voiceId.match(/^voice-([a-z-]+)-(male|female)-(\d+)$/i)
+            if (presetMatch) {
+              const [, , vGender, vIdx] = presetMatch
+              const remappedId = `voice-${targetFolder}-${vGender.toLowerCase()}-${vIdx}`
+              const matchedVoice =
+                voicesToUse.find((v) => v.id === remappedId) ||
+                voicesToUse.find((v) => v.gender?.toLowerCase() === vGender.toLowerCase()) ||
+                voicesToUse[0]
+              if (matchedVoice) {
+                return { ...r, voiceId: matchedVoice.id }
+              }
+            }
+            return { ...r, voiceId: newVoiceId }
+          })
+
+          updateState({
+            language: lang,
+            selectedVoiceId: updatedRounds[safeFocusIdx]?.voiceId || newVoiceId,
+            voices: combinedVoices,
+            rounds: updatedRounds,
+          })
+        } else {
+          updateState({
+            language: lang,
+            ...(combinedVoices.length > 0 ? { voices: combinedVoices } : {}),
+          })
+        }
+      })
+    },
+    [state.customVoices, state.focusedRoundIndex, state.rounds, state.voices, updateState]
   )
 
   // Total character counter
@@ -220,23 +324,64 @@ export function TextToSpeechScreen() {
   // Get voice helper
   const getVoice = useCallback(
     (id: string): Voice => {
-      return (
-        state.voices.find((v) => v.id === id) || {
-          id: 'voice-custom',
-          name: 'Speaker',
-          description: 'Custom Voice',
+      const found =
+        state.voices.find((v) => v.id === id) ||
+        (state.customVoices || []).find((v) => v.id === id) ||
+        getCachedVoices().find((v) => v.id === id)
+      if (found) return found
+
+      const activeFolder = resolveLanguageFolder(state.language)
+      const presetMatch = id?.match(/^voice-([a-z-]+)-(male|female)-(\d+)$/i)
+      if (presetMatch) {
+        const [, vFolder, vGender, vIdx] = presetMatch
+        const folder = vFolder.toLowerCase()
+        const genderCap = (vGender.charAt(0).toUpperCase() + vGender.slice(1).toLowerCase()) as 'Male' | 'Female'
+        const sameLangVoice =
+          state.voices.find((v) => v.id === id) ||
+          getCachedVoices(folder).find((v) => v.id === id)
+        if (sameLangVoice) return sameLangVoice
+
+        return {
+          id: `voice-${folder}-${vGender.toLowerCase()}-${vIdx}`,
+          name: `Speaker (${folder.toUpperCase()})`,
+          description: `${folder.toUpperCase()} Voice`,
           category: 'preset',
-          color: '#a855f7',
+          color: '#38bdf8',
           avatarUrl: '/voices/sterling.jpg',
-          sampleUrl: '/voices/samples/en/voice_en_male_1.mp3',
-          initials: 'S',
-          gender: 'Neutral',
-          tags: [],
+          sampleUrl: `/voices/samples/${folder}/voice_${folder}_${vGender.toLowerCase()}_${vIdx}.mp3`,
+          initials: folder.slice(0, 2).toUpperCase(),
+          gender: genderCap,
+          languageCode: folder,
+          languageName: state.language || folder,
+          tags: [folder, genderCap],
         }
-      )
+      }
+
+      const fallbackLangVoice =
+        state.voices.find((v) => v.languageCode?.toLowerCase() === activeFolder) ||
+        getCachedVoices(activeFolder)[0]
+      if (fallbackLangVoice) return fallbackLangVoice
+
+      return {
+        id: `voice-${activeFolder}-male-1`,
+        name: 'Speaker',
+        description: `${state.language || 'Default'} Voice`,
+        category: 'preset',
+        color: '#a855f7',
+        avatarUrl: '/voices/sterling.jpg',
+        sampleUrl: `/voices/samples/${activeFolder}/voice_${activeFolder}_male_1.mp3`,
+        initials: 'S',
+        gender: 'Male',
+        languageCode: activeFolder,
+        languageName: state.language || 'English (US)',
+        tags: [],
+      }
     },
-    [state.voices]
+    [state.voices, state.customVoices, state.language]
   )
+
+  const dynamicLanguages = useDynamicLanguages()
+  const languagesList = dynamicLanguages.length > 0 ? dynamicLanguages : LANGUAGES
 
   // Focused round
   const focusedRound = state.rounds[state.focusedRoundIndex] || state.rounds[0]
@@ -246,10 +391,18 @@ export function TextToSpeechScreen() {
     [focusedRound?.voiceId, state.selectedVoiceId, getVoice]
   )
 
-  const activeLanguage = useMemo(
-    () => LANGUAGES.find((l) => l.name === state.language) || LANGUAGES[0],
-    [state.language]
-  )
+  const activeLanguage = useMemo(() => {
+    const norm = (state.language || '').trim().toLowerCase()
+    const folder = resolveLanguageFolder(state.language)
+    return (
+      languagesList.find(
+        (l) =>
+          l.name.toLowerCase() === norm ||
+          l.code.toLowerCase() === norm ||
+          l.code.toLowerCase() === folder
+      ) || languagesList[0]
+    )
+  }, [state.language, languagesList])
 
   // Generation that the TTS screen surfaces (latest or loaded history entry)
   const currentGeneration = state.activeGeneration || state.generations[0] || null
@@ -968,7 +1121,7 @@ export function TextToSpeechScreen() {
                     ? state.focusedRoundIndex
                     : 0
                 updateState({
-                  voicePrompt: state.rounds.length <= 1 ? val : state.voicePrompt,
+                  voicePrompt: val,
                   rounds: state.rounds.map((r, i) =>
                     i === targetIndex ? { ...r, prompt: val } : r
                   ),
@@ -991,23 +1144,7 @@ export function TextToSpeechScreen() {
               onOpenCloneModal={() => updateState({ isCloneModalOpen: true })}
               onOpenExplorerModal={() => updateState({ isLanguageSelectorOpen: true })}
               onToggleLavaSr={() => updateState({ lavaSrEnabled: !state.lavaSrEnabled })}
-              onSelectLanguage={(lang) => {
-                loadVoicesForLanguage(lang).then((langVoices) => {
-                  const voicesToUse = langVoices.length > 0 ? langVoices : getVoicesForLanguage(lang)
-                  const newVoiceId = voicesToUse[0]?.id
-                  const targetIdx = state.focusedRoundIndex >= 0 ? state.focusedRoundIndex : 0
-                  if (newVoiceId && lang !== 'Auto Detect') {
-                    updateState({
-                      language: lang,
-                      selectedVoiceId: newVoiceId,
-                      voices: Array.from(new Map([...state.voices, ...voicesToUse].map((v) => [v.id, v])).values()),
-                      rounds: state.rounds.map((r, i) => (i === targetIdx ? { ...r, voiceId: newVoiceId } : r)),
-                    })
-                  } else {
-                    updateState({ language: lang })
-                  }
-                })
-              }}
+              onSelectLanguage={handleSelectLanguage}
             />
 
             <HistoryDrawer
@@ -1072,15 +1209,23 @@ export function TextToSpeechScreen() {
         playingVoiceId={voicePreview.playingVoiceId}
         onTogglePreview={voicePreview.togglePreview}
         onSelectVoice={(voiceId) => {
-          const targetIdx = state.focusedRoundIndex >= 0 ? state.focusedRoundIndex : 0
+          const targetIdx =
+            state.focusedRoundIndex >= 0 && state.focusedRoundIndex < state.rounds.length
+              ? state.focusedRoundIndex
+              : 0
+          const pickedVoice =
+            state.voices.find((v) => v.id === voiceId) ||
+            (state.customVoices || []).find((v) => v.id === voiceId) ||
+            getCachedVoices().find((v) => v.id === voiceId)
           updateState({
             selectedVoiceId: voiceId,
+            ...(pickedVoice?.languageName && pickedVoice.category !== 'cloned'
+              ? { language: pickedVoice.languageName }
+              : {}),
             rounds: state.rounds.map((r, i) => (i === targetIdx ? { ...r, voiceId } : r)),
           })
         }}
-        onSelectLanguage={(langName) => {
-          updateState({ language: langName })
-        }}
+        onSelectLanguage={handleSelectLanguage}
         onOpenCloneModal={() => updateState({ isCloneModalOpen: true })}
         onVoicesLoaded={handleVoicesLoaded}
         onDeleteVoice={handleDeleteCustomVoice}
