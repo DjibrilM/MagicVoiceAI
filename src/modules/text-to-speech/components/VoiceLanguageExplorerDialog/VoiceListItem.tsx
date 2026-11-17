@@ -23,7 +23,7 @@ export function VoiceListItem({
   selectedCategories,
   onTogglePreview,
   onSelectVoice,
-  onSelectLanguage,
+  onSelectLanguage: _onSelectLanguage,
   onToggleCategory,
   onClose,
   onDeleteVoice,
@@ -37,9 +37,6 @@ export function VoiceListItem({
 
   const handleSelect = () => {
     onSelectVoice(voice.id)
-    if (voice.languageName) {
-      onSelectLanguage(voice.languageName)
-    }
     onClose()
   }
 

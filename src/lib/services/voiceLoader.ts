@@ -424,6 +424,68 @@ export async function loadVoicesForPackage(pkgOrFolder: VoicePackageInfo | strin
   return loadPromise
 }
 
+const LANGUAGE_FOLDER_ALIASES: Record<string, string> = {
+  english: 'en',
+  'english (us)': 'en',
+  'english (united states)': 'en',
+  'en-us': 'en',
+  en: 'en',
+  'english (uk)': 'en-gb',
+  'english (united kingdom)': 'en-gb',
+  'en-gb': 'en-gb',
+  'english (australia)': 'en-au',
+  'en-au': 'en-au',
+  'english (africa)': 'en-af',
+  'en-af': 'en-af',
+  french: 'fr',
+  français: 'fr',
+  francais: 'fr',
+  fr: 'fr',
+  spanish: 'es',
+  español: 'es',
+  espanol: 'es',
+  es: 'es',
+  german: 'de',
+  deutsch: 'de',
+  de: 'de',
+  italian: 'it',
+  italiano: 'it',
+  it: 'it',
+  portuguese: 'pt',
+  português: 'pt',
+  portugues: 'pt',
+  pt: 'pt',
+  japanese: 'ja',
+  日本語: 'ja',
+  ja: 'ja',
+  chinese: 'zh',
+  '中文 (mandarin)': 'zh',
+  中文: 'zh',
+  zh: 'zh',
+  korean: 'ko',
+  한국어: 'ko',
+  ko: 'ko',
+  hindi: 'hi',
+  हिन्दी: 'hi',
+  hi: 'hi',
+  arabic: 'ar',
+  العربية: 'ar',
+  ar: 'ar',
+  russian: 'ru',
+  русский: 'ru',
+  ru: 'ru',
+  swahili: 'sw',
+  kiswahili: 'sw',
+  sw: 'sw',
+}
+
+export function resolveLanguageFolder(langNameOrCode?: string): string {
+  if (!langNameOrCode) return 'en'
+  const norm = langNameOrCode.trim().toLowerCase()
+  if (norm === 'auto' || norm === 'auto detect' || norm === 'all') return 'en'
+  return LANGUAGE_FOLDER_ALIASES[norm] || norm
+}
+
 /**
  * Dynamically loads voices for a language code or name (e.g. "en", "es", "Spanish", "English (UK)")
  */
@@ -433,20 +495,29 @@ export async function loadVoicesForLanguage(langNameOrCode?: string): Promise<Vo
   }
 
   const packages = await scanVoiceSamples()
-  const norm = langNameOrCode.toLowerCase()
-  const matched = packages.find(
-    (p) =>
-      p.code.toLowerCase() === norm ||
-      p.language.toLowerCase() === norm ||
-      p.name.toLowerCase() === norm ||
-      p.folder.toLowerCase() === norm
-  )
+  const norm = langNameOrCode.trim().toLowerCase()
+  const aliasFolder = LANGUAGE_FOLDER_ALIASES[norm]
+  const matched =
+    packages.find(
+      (p) =>
+        p.code.toLowerCase() === norm ||
+        p.language.toLowerCase() === norm ||
+        p.name.toLowerCase() === norm ||
+        p.folder.toLowerCase() === norm ||
+        (p.nativeName && p.nativeName.toLowerCase() === norm) ||
+        (aliasFolder && (p.folder.toLowerCase() === aliasFolder || p.code.toLowerCase() === aliasFolder))
+    ) ||
+    packages.find(
+      (p) =>
+        p.name.toLowerCase().startsWith(norm) ||
+        p.language.toLowerCase().startsWith(norm)
+    )
 
   if (matched) {
     return loadVoicesForPackage(matched)
   }
 
-  return loadVoicesForPackage(langNameOrCode)
+  return loadVoicesForPackage(aliasFolder || langNameOrCode)
 }
 
 /**
@@ -468,10 +539,13 @@ export function getCachedVoices(langNameOrCode?: string): Voice[] {
     return Array.from(voicesCacheByFolder.values()).flat()
   }
 
-  const norm = langNameOrCode.toLowerCase()
+  const norm = langNameOrCode.trim().toLowerCase()
+  const aliasFolder = LANGUAGE_FOLDER_ALIASES[norm]
   for (const [key, voices] of voicesCacheByFolder.entries()) {
+    const keyLower = key.toLowerCase()
     if (
-      key.toLowerCase() === norm ||
+      keyLower === norm ||
+      (aliasFolder && keyLower === aliasFolder) ||
       voices[0]?.languageCode?.toLowerCase() === norm ||
       voices[0]?.languageName?.toLowerCase() === norm
     ) {

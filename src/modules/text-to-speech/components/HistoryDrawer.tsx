@@ -4,7 +4,6 @@ import {
   X,
   Play,
   Pause,
-  Sparkles,
   Copy,
   Trash2,
   Download,
@@ -290,11 +289,6 @@ export function HistoryDrawer({
                             <span className="text-zinc-500 text-[10.5px]">Single voice</span>
                           )}
 
-                          {/* Engine Badge */}
-                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-white/[0.04] text-zinc-400 border border-white/[0.04]">
-                            CosyVoice 3
-                          </span>
-
                           {/* Duration */}
                           {item.duration && (
                             <>
@@ -315,8 +309,10 @@ export function HistoryDrawer({
                       {/* Right Hover Actions */}
                       <div
                         className={cn(
-                          'items-center gap-1 shrink-0 pt-0.5',
-                          isThisItemPlaying ? 'flex' : 'hidden group-hover:flex'
+                          'flex items-center gap-1 shrink-0 pt-0.5 transition-opacity',
+                          isThisItemPlaying
+                            ? 'opacity-100 pointer-events-auto'
+                            : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto has-[[data-state=open]]:opacity-100 has-[[data-state=open]]:pointer-events-auto'
                         )}
                       >
                         {/* Play / Pause Button with Tooltip */}
@@ -371,12 +367,16 @@ export function HistoryDrawer({
                               </svg>
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent className="w-48 bg-[#18181b] border-[#27272a] text-zinc-200 p-1">
+                          <DropdownMenuContent
+                            align="end"
+                            sideOffset={6}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-48 bg-[#18181b] border-[#27272a] text-zinc-200 p-1 z-50"
+                          >
                             <DropdownMenuItem
                               onClick={() => onSelectHistoryItem(item)}
                               className="text-xs cursor-pointer flex items-center gap-2"
                             >
-                              <Sparkles className="size-3.5 text-emerald-400" />
                               <span>Load Full Conversation</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem
